@@ -1,43 +1,427 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta
-      name="description"
-      content="Web site created using create-react-app"
-    />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-    <!--
-      manifest.json provides metadata used when your web app is installed on a
-      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
-    -->
-    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <!--
-      Notice the use of %PUBLIC_URL% in the tags above.
-      It will be replaced with the URL of the `public` folder during the build.
-      Only files inside the `public` folder can be referenced from the HTML.
+<html>
+<head>
+    <title>Network Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/lucide-icons@0.263.1/font/lucide-icons.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-      Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
-      work correctly both with client-side routing and a non-root public URL.
-      Learn how to configure a non-root public URL by running `npm run build`.
-    -->
-    <title>React App</title>
-  </head>
-  <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
-    <!--
-      This HTML file is a template.
-      If you open it directly in the browser, you will see an empty page.
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+        }
 
-      You can add webfonts, meta tags, or analytics to this file.
-      The build step will place the bundled scripts into the <body> tag.
+        .container {
+            display: flex;
+            min-height: 100vh;
+        }
 
-      To begin the development, run `npm start` or `yarn start`.
-      To create a production bundle, use `npm run build` or `yarn build`.
-    -->
-  </body>
+        /* Sidebar styles */
+        .sidebar {
+            width: 250px;
+            background: #2d2d2d;
+            padding: 20px 0;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar.collapsed {
+            width: 60px;
+        }
+
+        .sidebar-header {
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .toggle-btn {
+            background: none;
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        .nav-menu {
+            list-style: none;
+        }
+
+        .nav-item {
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: background 0.3s;
+            display: flex;
+            align-items: center;
+            color: #fff;
+            text-decoration: none;
+        }
+
+        .nav-item:hover {
+            background: #3d3d3d;
+        }
+
+        .nav-item.active {
+            background: #4d4d4d;
+        }
+
+        .nav-item i {
+            margin-right: 10px;
+        }
+
+        /* Main content area */
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+
+        /* Content sections */
+        .content-section {
+            display: none;
+            padding: 20px;
+            background: #2d2d2d;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .content-section.active {
+            display: block;
+        }
+
+        /* Traffic container and components */
+        .traffic-container {
+            display: grid;
+            grid-template-rows: auto auto 300px 200px;
+            gap: 20px;
+            height: 100%;
+        }
+
+        .chart-container {
+            background: #3d3d3d;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .table-container {
+            height: 300px;
+            overflow-y: auto;
+            background: #2d2d2d;
+            border-radius: 8px;
+        }
+
+        #packetTable {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        #packetTable thead {
+            position: sticky;
+            top: 0;
+            background: #1a1a1a;
+            z-index: 1;
+        }
+
+        #packetTable th,
+        #packetTable td {
+            padding: 8px;
+            text-align: left;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #packetTable th:nth-child(1),
+        #packetTable td:nth-child(1) { width: 15%; }
+        #packetTable th:nth-child(2),
+        #packetTable td:nth-child(2) { width: 25%; }
+        #packetTable th:nth-child(3),
+        #packetTable td:nth-child(3) { width: 25%; }
+        #packetTable th:nth-child(4),
+        #packetTable td:nth-child(4) { width: 15%; }
+        #packetTable th:nth-child(5),
+        #packetTable td:nth-child(5) { width: 20%; }
+
+        /* Virtual Keyboard */
+        .virtual-keyboard {
+            position: relative;
+            bottom: 0;
+            width: 100%;
+            height: 200px;
+            background: #2d2d2d;
+            border-radius: 8px;
+            padding: 10px;
+            display: grid;
+            grid-template-rows: repeat(4, 1fr);
+            gap: 5px;
+        }
+
+        .keyboard-row {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+        }
+
+        .key {
+            flex: 1;
+            min-width: 40px;
+            height: 100%;
+            background: #3d3d3d;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .key:hover {
+            background: #4d4d4d;
+        }
+
+        .key:active {
+            background: #5d5d5d;
+        }
+
+        .key.space { flex: 3; }
+        .key.shift { flex: 2; }
+        .key.enter { flex: 2; }
+        .key.backspace { flex: 2; }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 60px;
+            }
+            
+            .sidebar.expanded {
+                width: 250px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h3 class="sidebar-title">Menu</h3>
+                <button class="toggle-btn" onclick="toggleSidebar()">
+                    ≡
+                </button>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item active" onclick="showSection('real-time')">
+                    <i>📊</i> Real-time Traffic
+                </li>
+                <li class="nav-item" onclick="showSection('intrusion')">
+                    <i>🛡️</i> Intrusion Detection
+                </li>
+                <li class="nav-item" onclick="window.location.href='/deviceManagement.html'">
+                  <i>💻</i> Device Management
+                </li>
+                <li class="nav-item" onclick="showSection('bandwidth')">
+                    <i>📈</i> Bandwidth Control
+                </li>
+                <li class="nav-item" onclick="showSection('network')">
+                    <i>🌐</i> Network Health
+                </li>
+                <li class="nav-item" onclick="showSection('firewall')">
+                    <i>🔒</i> Firewall Control
+                </li>
+            </ul>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content" id="main-content">
+            <!-- Real-time Traffic Section -->
+            <div id="real-time" class="content-section active">
+                <h2>Real-time Traffic Analysis</h2>
+                <div id="trafficInfo" class="traffic-container">
+                    <div class="chart-container">
+                        <canvas id="protocolChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="bandwidthChart"></canvas>
+                    </div>
+                    <div class="table-container">
+                        <table id="packetTable">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Source</th>
+                                    <th>Destination</th>
+                                    <th>Protocol</th>
+                                    <th>Length</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div class="virtual-keyboard">
+                        <!-- Row 1 -->
+                        <div class="keyboard-row">
+                            <button class="key">1</button>
+                            <button class="key">2</button>
+                            <button class="key">3</button>
+                            <button class="key">4</button>
+                            <button class="key">5</button>
+                            <button class="key">6</button>
+                            <button class="key">7</button>
+                            <button class="key">8</button>
+                            <button class="key">9</button>
+                            <button class="key">0</button>
+                            <button class="key backspace">⌫</button>
+                        </div>
+                        <!-- Row 2 -->
+                        <div class="keyboard-row">
+                            <button class="key">q</button>
+                            <button class="key">w</button>
+                            <button class="key">e</button>
+                            <button class="key">r</button>
+                            <button class="key">t</button>
+                            <button class="key">y</button>
+                            <button class="key">u</button>
+                            <button class="key">i</button>
+                            <button class="key">o</button>
+                            <button class="key">p</button>
+                        </div>
+                        <!-- Row 3 -->
+                        <div class="keyboard-row">
+                            <button class="key">a</button>
+                            <button class="key">s</button>
+                            <button class="key">d</button>
+                            <button class="key">f</button>
+                            <button class="key">g</button>
+                            <button class="key">h</button>
+                            <button class="key">j</button>
+                            <button class="key">k</button>
+                            <button class="key">l</button>
+                            <button class="key enter">Enter</button>
+                        </div>
+                        <!-- Row 4 -->
+                        <div class="keyboard-row">
+                            <button class="key shift">Shift</button>
+                            <button class="key">z</button>
+                            <button class="key">x</button>
+                            <button class="key">c</button>
+                            <button class="key">v</button>
+                            <button class="key">b</button>
+                            <button class="key">n</button>
+                            <button class="key">m</button>
+                            <button class="key space">Space</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Other sections -->
+            <div id="intrusion" class="content-section">
+                <h2>Intrusion Detection</h2>
+                <!-- Intrusion detection content -->
+            </div>
+
+            <div id="device" class="content-section">
+                <h2>Device Management</h2>
+                <!-- Device management content -->
+            </div>
+
+            <div id="bandwidth" class="content-section">
+                <h2>Bandwidth Control</h2>
+                <!-- Bandwidth control content -->
+            </div>
+
+            <div id="network" class="content-section">
+                <h2>Network Health</h2>
+                <!-- Network health content -->
+            </div>
+
+            <div id="firewall" class="content-section">
+                <h2>Firewall Control</h2>
+                <!-- Firewall control content -->
+            </div>
+        </div>
+    </div>
+
+    <script src="/trafficChart.js"></script>
+    <script>
+        // Sidebar toggle functionality
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('collapsed');
+            const mainContent = document.getElementById('main-content');
+            mainContent.style.marginLeft = sidebar.classList.contains('collapsed') ? '60px' : '250px';
+        }
+
+        // Content section switching
+        function showSection(sectionId) {
+            document.querySelectorAll('.content-section').forEach(section => {
+                section.classList.remove('active');
+            });
+            
+            document.getElementById(sectionId).classList.add('active');
+            
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+        }
+
+        // Virtual keyboard functionality
+        let shiftPressed = false;
+
+        function initializeVirtualKeyboard() {
+            const keys = document.querySelectorAll('.key');
+            
+            keys.forEach(key => {
+                key.addEventListener('click', () => {
+                    const value = key.textContent;
+                    
+                    switch(value) {
+                        case '⌫':
+                            // Handle backspace
+                            break;
+                        case 'Shift':
+                            shiftPressed = !shiftPressed;
+                            toggleShift();
+                            break;
+                        case 'Enter':
+                            // Handle enter
+                            break;
+                        case 'Space':
+                            // Handle space
+                            break;
+                        default:
+                            console.log(shiftPressed ? value.toUpperCase() : value.toLowerCase());
+                    }
+                });
+            });
+        }
+
+        function toggleShift() {
+            const keys = document.querySelectorAll('.key:not(.shift):not(.enter):not(.backspace):not(.space)');
+            keys.forEach(key => {
+                if (key.textContent.length === 1) {
+                    key.textContent = shiftPressed ? 
+                        key.textContent.toUpperCase() : 
+                        key.textContent.toLowerCase();
+                }
+            });
+        }
+
+        // Initialize everything when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeVirtualKeyboard();
+        });
+    </script>
+</body>
 </html>

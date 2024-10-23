@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Device Management - Network Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+        }
+
+        .header {
+            background: #2d2d2d;
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .back-button {
+            background: none;
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .container {
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .device-panel {
+            background: #2d2d2d;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .scan-btn {
+            padding: 10px 20px;
+            background: #4CAF50;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+        }
+
+        .device-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .device-table th,
+        .device-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #3d3d3d;
+        }
+
+        .device-table th {
+            background: #1a1a1a;
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+
+        .status-online { background: #4CAF50; }
+        .status-offline { background: #f44336; }
+
+        .action-btn {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 5px;
+            color: white;
+        }
+
+        .btn-monitor { background: #2196F3; }
+        .btn-block { background: #f44336; }
+        .btn-trust { background: #4CAF50; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <button class="back-button" onclick="window.location.href='/'">
+            ← Back to Dashboard
+        </button>
+        <h1>Device Management</h1>
+    </div>
+
+    <div class="container">
+        <div class="device-panel">
+            <div class="panel-header">
+                <h2>Network Devices</h2>
+                <button class="scan-btn" onclick="scanNetwork()">Scan Network</button>
+            </div>
+
+            <table class="device-table">
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Device Name</th>
+                        <th>IP Address</th>
+                        <th>MAC Address</th>
+                        <th>Type</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="deviceTableBody">
+                    <!-- Devices will be listed here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let devices = [];
+
+        async function scanNetwork() {
+            const scanBtn = document.querySelector('.scan-btn');
+            const tbody = document.getElementById('deviceTableBody');
+            
+            try {
+                // Show loading state
+                scanBtn.disabled = true;
+                scanBtn.textContent = 'Scanning...';
+                tbody.innerHTML = '<tr><td colspan="6">Scanning network...</td></tr>';
+
+                // Perform scan
+                const response = await fetch('/api/scan-network');
+                if (!response.ok) {
+                    throw new Error('Scan failed');
+                }
+                
+                const devices = await response.json();
+                
+                // Update table with results
+                tbody.innerHTML = devices.map(device => `
+                    <tr>
+                        <td>
+                            <span class="status-indicator ${device.online ? 'status-online' : 'status-offline'}"></span>
+                            ${device.online ? 'Online' : 'Offline'}
+                        </td>
+                        <td>${device.hostname || 'Unknown Device'}</td>
+                        <td>${device.ip}</td>
+                        <td>
+                            ${device.mac}
+                            ${device.isRandom ? 
+                                '<span class="badge badge-warning">Random</span>' : 
+                                '<span class="badge badge-success">Permanent</span>'
+                            }
+                        </td>
+                        <td>${device.manufacturer}</td>
+                        <td>First seen: ${device.firstSeen}<br>Last seen: ${device.lastSeen}</td>
+                        <td>
+                            <button class="action-btn btn-monitor" onclick="showDeviceHistory('${device.mac}')">
+                                History
+                            </button>
+                            <button class="action-btn btn-trust" onclick="trustDevice('${device.mac}')">
+                                Trust
+                            </button>
+                            <button class="action-btn btn-rename" onclick="renameDevice('${device.mac}')">
+                                Rename
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+
+            } catch (error) {
+                console.error('Scan error:', error);
+                tbody.innerHTML = '<tr><td colspan="6">Error scanning network. Please try again.</td></tr>';
+            } finally {
+                scanBtn.disabled = false;
+                scanBtn.textContent = 'Scan Network';
+            }
+        }
+
+        function updateDeviceTable() {
+            const tbody = document.getElementById('deviceTableBody');
+            tbody.innerHTML = devices.map(device => `
+                <tr>
+                    <td>
+                        <span class="status-indicator ${device.online ? 'status-online' : 'status-offline'}"></span>
+                        ${device.online ? 'Online' : 'Offline'}
+                    </td>
+                    <td>${device.name || 'Unknown Device'}</td>
+                    <td>${device.ip}</td>
+                    <td>${device.mac}</td>
+                    <td>${device.isOwned ? 'Owned' : 'Unknown'}</td>
+                    <td>
+                        <button class="action-btn btn-monitor" onclick="monitorDevice('${device.ip}')">
+                            Monitor
+                        </button>
+                        ${device.isOwned ? '' : `
+                            <button class="action-btn btn-trust" onclick="trustDevice('${device.ip}')">
+                                Trust
+                            </button>
+                        `}
+                        <button class="action-btn btn-block" onclick="blockDevice('${device.ip}')">
+                            Block
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        async function renameDevice(mac) {
+            const newName = prompt("Enter new name for device:");
+            if (!newName) return;
+
+            try {
+                const response = await fetch('/api/device/name', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ mac, name: newName })
+                });
+
+                if (!response.ok) throw new Error('Failed to update name');
+
+                // Refresh device list
+                scanNetwork();
+            } catch (error) {
+                console.error('Error renaming device:', error);
+                alert('Failed to rename device');
+            }
+        }
+
+        function monitorDevice(ip) {
+            // Implement device monitoring
+            console.log('Monitoring device:', ip);
+        }
+
+        function trustDevice(ip) {
+            // Implement device trusting
+            console.log('Trusting device:', ip);
+        }
+
+        function blockDevice(ip) {
+            // Implement device blocking
+            console.log('Blocking device:', ip);
+        }
+
+        // Initial scan when page loads
+        scanNetwork();
+    </script>
+</body>
+</html>
