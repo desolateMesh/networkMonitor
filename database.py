@@ -259,18 +259,36 @@ class NetworkDB:
         except sqlite3.Error as e:
             logging.error(f"Error adding device note: {e}")
             return False
+        
+    def get_device_details(self, mac):
+        """Get all details for a device"""
+        try:
+            conn = sqlite3.connect('devices.db', timeout=30)
+            c = conn.cursor()
+            c.execute('SELECT * FROM devices WHERE mac = ?', (mac,))
+            device = c.fetchone()
+            conn.close()
+            print(f"Device details for {mac}: {device}")  # Debug print
+            return device
+        except Exception as e:
+            print(f"Error getting device details: {str(e)}")
+            return None
 
-    def clear_database(self):
-        """Clear all data from the database - use with caution!"""
+    def reset_database(self):
+        """Reset the database completely - use with caution!"""
         try:
             with sqlite3.connect(self.db_name, timeout=30) as conn:
                 c = conn.cursor()
-                c.execute('DELETE FROM ip_history')
-                c.execute('DELETE FROM connection_history')
-                c.execute('DELETE FROM devices')
-                conn.commit()
-                logging.info("Database cleared successfully")
+                # Drop all tables
+                c.execute('DROP TABLE IF EXISTS ip_history')
+                c.execute('DROP TABLE IF EXISTS connection_history')
+                c.execute('DROP TABLE IF EXISTS devices')
+                
+                # Recreate tables
+                self.setup_database()  # This will recreate all tables fresh
+                
+                logging.info("Database reset successfully")
                 return True
         except sqlite3.Error as e:
-            logging.error(f"Error clearing database: {e}")
+            logging.error(f"Error resetting database: {e}")
             return False

@@ -68,42 +68,160 @@ class DeviceTracker:
             c = conn.cursor()
             current_time = datetime.now()
 
-            # Get existing device name if any
-            c.execute('SELECT custom_name FROM devices WHERE mac = ?', (mac,))
+            # Check for existing device info including custom name
+            c.execute('SELECT custom_name, hostname FROM devices WHERE mac = ?', (mac,))
             result = c.fetchone()
-            custom_name = result[0] if result else None
+            if result:
+                custom_name = result[0]
+                stored_hostname = result[1]
+            else:
+                custom_name = None
+                stored_hostname = hostname
+
+            # Use custom name if available, otherwise use hostname
+            display_name = custom_name if custom_name else hostname
 
             device_info = {
                 'mac': mac,
                 'ip': ip,
                 'hostname': hostname,
-                'name': custom_name or hostname,
+                'name': display_name,  # Use the display_name we created
+                'custom_name': custom_name,  # Include the custom_name
                 'is_random': self.is_mac_random(mac),
                 'last_seen': current_time,
                 'manufacturer': self.get_manufacturer(mac)
             }
 
-            # Insert or update device
+            # Insert or update with COALESCE to preserve custom_name
             c.execute('''
                 INSERT OR REPLACE INTO devices (
-                    mac, first_seen, last_seen, 
-                    hostname, custom_name
-                ) VALUES (?, ?, ?, ?, ?)
-            ''', (mac, current_time, current_time, hostname, custom_name))
-
-            # Record IP history
-            c.execute('''
-                INSERT INTO ip_history (mac, ip_address, timestamp)
-                VALUES (?, ?, ?)
-            ''', (mac, ip, current_time))
+                    mac, first_seen, last_seen, hostname, custom_name
+                ) VALUES (
+                    ?, 
+                    COALESCE((SELECT first_seen FROM devices WHERE mac = ?), ?),
+                    ?,
+                    ?,
+                    COALESCE((SELECT custom_name FROM devices WHERE mac = ?), ?)
+                )
+            ''', (mac, mac, current_time, current_time, hostname, mac, custom_name))
 
             conn.commit()
             conn.close()
+            
+            # Update local cache
+            self.known_devices[mac] = device_info
+            
             return device_info
 
         except Exception as e:
             print(f"Error tracking device: {str(e)}")
             return None
+        
+    def set_device_name(self, mac, custom_name):
+        """Set a custom name for a device"""
+        try:
+            print(f"DEBUG: Starting rename for MAC {mac} to {custom_name}")  # Debug print
+            
+            conn = sqlite3.connect('devices.db', timeout=30)
+            c = conn.cursor()
+            
+            # Print current state
+            c.execute('SELECT * FROM devices WHERE mac = ?', (mac,))
+            before = c.fetchone()
+            print(f"DEBUG: Before update - Device state: {before}")
+            
+            # Update both custom_name and hostname
+            c.execute('''
+                UPDATE devices 
+                SET custom_name = ?,
+                    hostname = ?
+                WHERE mac = ?
+            ''', (custom_name, custom_name, mac))
+            
+            print(f"DEBUG: Rows affected: {c.rowcount}")  # Debug print
+            
+            # Verify update
+            c.execute('SELECT * FROM devices WHERE mac = ?', (mac,))
+            after = c.fetchone()
+            print(f"DEBUG: After update - Device state: {after}")
+            
+            conn.commit()
+            conn.close()
+            
+            # Return detailed response
+            result = {
+                "success": True,
+                "before": str(before),
+                "after": str(after),
+                "mac": mac,
+                "new_name": custom_name
+            }
+            print(f"DEBUG: Returning result: {json.dumps(result)}")  # Debug print
+            return result
+
+        except Exception as e:
+            print(f"ERROR in set_device_name: {str(e)}")
+            return {"success": False, "error": str(e)}
+
+    def get_device(self, mac):
+        """Get device information"""
+        try:
+            conn = sqlite3.connect('devices.db', timeout=30)
+            c = conn.cursor()
+            c.execute('SELECT * FROM devices WHERE mac = ?', (mac,))
+            device = c.fetchone()
+            conn.close()
+            return device
+        except Exception as e:
+            print(f"Error getting device: {str(e)}")
+            return None
+
+    def track_device(self, mac, ip, hostname):
+        """Track device and determine if it's using randomization"""
+        try:
+            conn = sqlite3.connect('devices.db', timeout=30)
+            c = conn.cursor()
+            current_time = datetime.now()
+
+            # Check for existing custom name
+            c.execute('SELECT custom_name FROM devices WHERE mac = ?', (mac,))
+            result = c.fetchone()
+            device_name = result[0] if result and result[0] else hostname
+
+            device_info = {
+                'mac': mac,
+                'ip': ip,
+                'hostname': hostname,
+                'name': device_name,  # Use custom name if it exists
+                'is_random': self.is_mac_random(mac),
+                'last_seen': current_time,
+                'manufacturer': self.get_manufacturer(mac)
+            }
+
+            # Insert or update with COALESCE to preserve custom_name
+            c.execute('''
+                INSERT OR REPLACE INTO devices (
+                    mac, first_seen, last_seen, hostname, custom_name
+                ) VALUES (
+                    ?, 
+                    COALESCE((SELECT first_seen FROM devices WHERE mac = ?), ?),
+                    ?,
+                    ?,
+                    COALESCE((SELECT custom_name FROM devices WHERE mac = ?), ?)
+                )
+            ''', (mac, mac, current_time, current_time, hostname, mac, device_name))
+
+            conn.commit()
+            conn.close()
+            
+            # Update local cache
+            self.known_devices[mac] = device_info
+            
+            return device_info
+
+        except Exception as e:
+            print(f"Error tracking device: {str(e)}")
+            return None  
 
 def scan_network():
     """Enhanced network scan with device tracking"""
@@ -151,12 +269,15 @@ def scan_network():
                     'ip': ip,
                     'mac': mac,
                     'hostname': hostname,
-                    'name': device_info.get('name', hostname),
+                    'name': device_info.get('name', hostname),  # Get name from device_info
+                    'custom_name': device_info.get('custom_name'),  # Get custom name
+                    'display_name': device_info.get('name', hostname),  # Use name from device_info as display name
                     'online': online,
                     'lastSeen': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     'isOwned': False,
                     'isRandom': device_info['is_random'],
-                    'manufacturer': device_info['manufacturer']
+                    'manufacturer': device_info['manufacturer'],
+                    'firstSeen': device_info.get('first_seen', 'Unknown')
                 }
                 devices.append(device)
 
@@ -165,6 +286,8 @@ def scan_network():
     except Exception as e:
         print(f"Error scanning network: {str(e)}", file=sys.stderr)
         return []
+    
+ 
 
 if __name__ == "__main__":
     try:
