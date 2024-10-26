@@ -14,6 +14,9 @@ let trafficData = {
     topTalkers: new Map()
 };
 
+// Device cache for names
+let deviceCache = new Map();
+
 // Initialize visualizations
 function initializeVisualizations() {
     const trafficInfo = document.getElementById('trafficInfo');
@@ -88,12 +91,31 @@ function initializeCharts() {
     });
 }
 
-// Handle WebSocket messages
-ws.onmessage = (event) => {
-    const packet = JSON.parse(event.data);
-    updateData(packet);
-    updateVisualizations();
-};
+// Helper function to get device name
+function getDeviceName(mac, defaultName) {
+    if (!mac) return defaultName;
+    
+    const deviceInfo = deviceCache.get(mac);
+    if (deviceInfo) {
+        return deviceInfo.custom_name || deviceInfo.hostname || defaultName;
+    }
+    
+    // If we don't have the device info yet, trigger a fetch
+    if (!deviceCache.has(mac)) {
+        fetch(`/api/device/state/${mac}`)
+            .then(response => response.json())
+            .then(deviceInfo => {
+                if (deviceInfo && !deviceInfo.error) {
+                    deviceCache.set(mac, deviceInfo);
+                    // Trigger a re-render of the table
+                    updateVisualizations();
+                }
+            })
+            .catch(error => console.error('Error fetching device info:', error));
+    }
+    
+    return defaultName;
+}
 
 // Update top talkers data
 function updateTopTalkers(ip, hostname) {
@@ -116,9 +138,11 @@ function updateData(packet) {
         trafficData.bandwidthData.shift();
     }
     
-    // Update top talkers
-    if (packet.src_ip) updateTopTalkers(packet.src_ip, packet.src_host || packet.src_ip);
-    if (packet.dst_ip) updateTopTalkers(packet.dst_ip, packet.dst_host || packet.dst_ip);
+    // Update device info and top talkers
+    if (packet.src_mac && !deviceCache.has(packet.src_mac)) {
+        const srcName = getDeviceName(packet.src_mac, packet.src_host || packet.src_ip);
+        updateTopTalkers(packet.src_ip, srcName);
+    }
     
     // Add to recent packets
     trafficData.packets.unshift(packet);
@@ -150,20 +174,45 @@ function updateVisualizations() {
     // Update packet table
     const tbody = document.querySelector('#packetTable tbody');
     if (tbody) {
-        tbody.innerHTML = trafficData.packets.map(packet => `
-            <tr>
-                <td>${packet.timestamp}</td>
-                <td>${packet.src_host || packet.src_ip}</td>
-                <td>${packet.dst_host || packet.dst_ip}</td>
-                <td>${packet.protocol}</td>
-                <td>${packet.length} bytes</td>
-            </tr>
-        `).join('');
+        tbody.innerHTML = trafficData.packets.map(packet => {
+            const srcName = getDeviceName(packet.src_mac, packet.src_host || packet.src_ip);
+            const dstName = getDeviceName(packet.dst_mac, packet.dst_host || packet.dst_ip);
+            
+            return `
+                <tr>
+                    <td>${packet.timestamp}</td>
+                    <td>${srcName}</td>
+                    <td>${dstName}</td>
+                    <td>${packet.protocol}</td>
+                    <td>${packet.length} bytes</td>
+                </tr>
+            `;
+        }).join('');
     }
 }
 
-// Initialize when page loads
-document.addEventListener('DOMContentLoaded', initializeVisualizations);
+// WebSocket message handler
+ws.onmessage = (event) => {
+    const packet = JSON.parse(event.data);
+    console.log('Received packet:', packet);  // Debug log
+    
+    // If we have a MAC address but no device info, fetch it
+    if (packet.src_mac && !deviceCache.has(packet.src_mac)) {
+        fetch(`/api/device/state/${packet.src_mac}`)
+            .then(response => response.json())
+            .then(deviceInfo => {
+                if (deviceInfo && !deviceInfo.error) {
+                    deviceCache.set(packet.src_mac, deviceInfo);
+                    // Trigger a re-render of the table
+                    updateVisualizations();
+                }
+            })
+            .catch(error => console.error('Error fetching device info:', error));
+    }
+
+    updateData(packet);
+    updateVisualizations();
+};
 
 // WebSocket error handling
 ws.onerror = (error) => {
@@ -177,3 +226,6 @@ ws.onclose = () => {
 ws.onopen = () => {
     console.log('WebSocket connection established');
 };
+
+// Initialize when page loads
+document.addEventListener('DOMContentLoaded', initializeVisualizations);

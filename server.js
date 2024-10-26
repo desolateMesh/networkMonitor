@@ -416,6 +416,53 @@ app.get('/api/scan-subnets', async (req, res) => {
     res.json({ status: 'scanning' });
 });
 
+// Add this endpoint to server.js
+app.get('/api/device/ip/:ip', (req, res) => {
+    const { ip } = req.params;
+    const pythonProcess = spawn('python', ['-c', `
+import sqlite3
+from database import NetworkDB
+
+try:
+    db = NetworkDB()
+    conn = sqlite3.connect('devices.db')
+    c = conn.cursor()
+    
+    # Get the most recent MAC address for this IP
+    c.execute('''
+        SELECT mac FROM ip_history 
+        WHERE ip_address = ? 
+        ORDER BY timestamp DESC 
+        LIMIT 1
+    ''', (ip,))
+    
+    result = c.fetchone()
+    if result:
+        print({"mac": result[0]})
+    else:
+        print({"error": "IP not found"})
+        
+    conn.close()
+except Exception as e:
+    print({"error": str(e)})
+    `]);
+
+    let resultData = '';
+    
+    pythonProcess.stdout.on('data', (data) => {
+        resultData += data.toString();
+    });
+
+    pythonProcess.on('close', (code) => {
+        try {
+            const result = JSON.parse(resultData);
+            res.json(result);
+        } catch (e) {
+            res.status(500).json({ error: 'Invalid response from Python' });
+        }
+    });
+});
+
 // Add these endpoints to your server.js
 app.get('/api/devices/history/:mac', (req, res) => {
     const { mac } = req.params;
