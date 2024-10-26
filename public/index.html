@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>Network Monitor</title>
+    <link rel="icon" href="/images/logo.png" type="image/png">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/lucide-icons@0.263.1/font/lucide-icons.min.css" rel="stylesheet">
     <style>
@@ -214,8 +215,9 @@
         <!-- Sidebar -->
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
+                <img src="/images/logo.png" alt="Logo" width="100">
                 <h3 class="sidebar-title">Menu</h3>
-                <button class="toggle-btn" onclick="toggleSidebar()">
+                <button id="toggleButton" class="toggle-btn" onclick="toggleSidebar()">
                     ≡
                 </button>
             </div>
@@ -227,7 +229,7 @@
                     <i>🛡️</i> Intrusion Detection
                 </li>
                 <li class="nav-item" onclick="window.location.href='/deviceManagement.html'">
-                  <i>💻</i> Device Management
+                    <i>💻</i> Device Management
                 </li>
                 <li class="nav-item" onclick="showSection('bandwidth')">
                     <i>📈</i> Bandwidth Control
@@ -238,8 +240,12 @@
                 <li class="nav-item" onclick="showSection('firewall')">
                     <i>🔒</i> Firewall Control
                 </li>
+                <li class="nav-item" onclick="showSection('networkmap')">
+                    <i>🌍</i> Network Map
+                </li>
             </ul>
         </div>
+    
 
         <!-- Main Content -->
         <div class="main-content" id="main-content">
@@ -354,14 +360,7 @@
 
     <script src="/trafficChart.js"></script>
     <script>
-        // Sidebar toggle functionality
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            sidebar.classList.toggle('collapsed');
-            const mainContent = document.getElementById('main-content');
-            mainContent.style.marginLeft = sidebar.classList.contains('collapsed') ? '60px' : '250px';
-        }
-
+        
         // Content section switching
         function showSection(sectionId) {
             document.querySelectorAll('.content-section').forEach(section => {
@@ -422,6 +421,21 @@
         document.addEventListener('DOMContentLoaded', function() {
             initializeVirtualKeyboard();
         });
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            
+            sidebar.classList.toggle('collapsed');
+            
+            if (sidebar.classList.contains('collapsed')) {
+                mainContent.classList.remove('expanded-margin');
+                mainContent.classList.add('collapsed-margin');
+            } else {
+                mainContent.classList.remove('collapsed-margin');
+                mainContent.classList.add('expanded-margin');
+            }
+        }
     </script>
 </body>
 </html>
