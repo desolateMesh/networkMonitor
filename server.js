@@ -337,7 +337,6 @@ except Exception as e:
 });
 
 // In server.js, modify the scan-subnets endpoint
-
 app.get('/api/scan-subnets', async (req, res) => {
     console.log('Starting subnet scan...');
     
