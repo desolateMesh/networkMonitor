@@ -1,3 +1,4 @@
+<!-- public/index.html -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -6,6 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/lucide-icons@0.263.1/font/lucide-icons.min.css" rel="stylesheet">
     <style>
+        /* Reset and base styles */
         * {
             margin: 0;
             padding: 0;
@@ -49,6 +51,7 @@
             color: #fff;
             cursor: pointer;
             padding: 5px;
+            font-size: 24px;
         }
 
         .nav-menu {
@@ -75,6 +78,7 @@
 
         .nav-item i {
             margin-right: 10px;
+            font-size: 20px;
         }
 
         /* Main content area */
@@ -152,52 +156,6 @@
         #packetTable th:nth-child(5),
         #packetTable td:nth-child(5) { width: 20%; }
 
-        /* Virtual Keyboard */
-        .virtual-keyboard {
-            position: relative;
-            bottom: 0;
-            width: 100%;
-            height: 200px;
-            background: #2d2d2d;
-            border-radius: 8px;
-            padding: 10px;
-            display: grid;
-            grid-template-rows: repeat(4, 1fr);
-            gap: 5px;
-        }
-
-        .keyboard-row {
-            display: flex;
-            gap: 5px;
-            justify-content: center;
-        }
-
-        .key {
-            flex: 1;
-            min-width: 40px;
-            height: 100%;
-            background: #3d3d3d;
-            border: none;
-            border-radius: 4px;
-            color: #fff;
-            font-size: 14px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .key:hover {
-            background: #4d4d4d;
-        }
-
-        .key:active {
-            background: #5d5d5d;
-        }
-
-        .key.space { flex: 3; }
-        .key.shift { flex: 2; }
-        .key.enter { flex: 2; }
-        .key.backspace { flex: 2; }
-
         /* Responsive design */
         @media (max-width: 768px) {
             .sidebar {
@@ -222,7 +180,7 @@
                 </button>
             </div>
             <ul class="nav-menu">
-                <li class="nav-item active" onclick="showSection('real-time')">
+                <li class="nav-item active" onclick="showSection('real-time', event)">
                     <i>📊</i> Real-time Traffic
                 </li>
                 <li class="nav-item" onclick="window.location.href='/intrusionDetection.html'">
@@ -231,21 +189,20 @@
                 <li class="nav-item" onclick="window.location.href='/deviceManagement.html'">
                     <i>💻</i> Device Management
                 </li>
-                <li class="nav-item" onclick="showSection('bandwidth')">
+                <li class="nav-item" onclick="showSection('bandwidth', event)">
                     <i>📈</i> Bandwidth Control
                 </li>
-                <li class="nav-item" onclick="showSection('network')">
+                <li class="nav-item" onclick="showSection('network', event)">
                     <i>🌐</i> Network Health
                 </li>
-                <li class="nav-item" onclick="showSection('firewall')">
+                <li class="nav-item" onclick="showSection('firewall', event)">
                     <i>🔒</i> Firewall Control
                 </li>
-                <li class="nav-item" onclick="showSection('networkmap')">
+                <li class="nav-item" onclick="showSection('networkmap', event)">
                     <i>🌍</i> Network Map
                 </li>
             </ul>
         </div>
-    
 
         <!-- Main Content -->
         <div class="main-content" id="main-content">
@@ -273,62 +230,8 @@
                             <tbody></tbody>
                         </table>
                     </div>
-                    <div class="virtual-keyboard">
-                        <!-- Row 1 -->
-                        <div class="keyboard-row">
-                            <button class="key">1</button>
-                            <button class="key">2</button>
-                            <button class="key">3</button>
-                            <button class="key">4</button>
-                            <button class="key">5</button>
-                            <button class="key">6</button>
-                            <button class="key">7</button>
-                            <button class="key">8</button>
-                            <button class="key">9</button>
-                            <button class="key">0</button>
-                            <button class="key backspace">⌫</button>
-                        </div>
-                        <!-- Row 2 -->
-                        <div class="keyboard-row">
-                            <button class="key">q</button>
-                            <button class="key">w</button>
-                            <button class="key">e</button>
-                            <button class="key">r</button>
-                            <button class="key">t</button>
-                            <button class="key">y</button>
-                            <button class="key">u</button>
-                            <button class="key">i</button>
-                            <button class="key">o</button>
-                            <button class="key">p</button>
-                        </div>
-                        <!-- Row 3 -->
-                        <div class="keyboard-row">
-                            <button class="key">a</button>
-                            <button class="key">s</button>
-                            <button class="key">d</button>
-                            <button class="key">f</button>
-                            <button class="key">g</button>
-                            <button class="key">h</button>
-                            <button class="key">j</button>
-                            <button class="key">k</button>
-                            <button class="key">l</button>
-                            <button class="key enter">Enter</button>
-                        </div>
-                        <!-- Row 4 -->
-                        <div class="keyboard-row">
-                            <button class="key shift">Shift</button>
-                            <button class="key">z</button>
-                            <button class="key">x</button>
-                            <button class="key">c</button>
-                            <button class="key">v</button>
-                            <button class="key">b</button>
-                            <button class="key">n</button>
-                            <button class="key">m</button>
-                            <button class="key space">Space</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                </div> <!-- Close traffic-container -->
+            </div> <!-- Close real-time content-section -->
 
             <!-- Other sections -->
             <div id="intrusion" class="content-section">
@@ -355,79 +258,31 @@
                 <h2>Firewall Control</h2>
                 <!-- Firewall control content -->
             </div>
-        </div>
-    </div>
+        </div> <!-- Close main-content -->
+    </div> <!-- Close container -->
 
     <script src="/trafficChart.js"></script>
     <script>
-        
         // Content section switching
-        function showSection(sectionId) {
+        function showSection(sectionId, event) {
             document.querySelectorAll('.content-section').forEach(section => {
                 section.classList.remove('active');
             });
-            
+
             document.getElementById(sectionId).classList.add('active');
-            
+
             document.querySelectorAll('.nav-item').forEach(item => {
                 item.classList.remove('active');
             });
             event.currentTarget.classList.add('active');
         }
 
-        // Virtual keyboard functionality
-        let shiftPressed = false;
-
-        function initializeVirtualKeyboard() {
-            const keys = document.querySelectorAll('.key');
-            
-            keys.forEach(key => {
-                key.addEventListener('click', () => {
-                    const value = key.textContent;
-                    
-                    switch(value) {
-                        case '⌫':
-                            // Handle backspace
-                            break;
-                        case 'Shift':
-                            shiftPressed = !shiftPressed;
-                            toggleShift();
-                            break;
-                        case 'Enter':
-                            // Handle enter
-                            break;
-                        case 'Space':
-                            // Handle space
-                            break;
-                        default:
-                            console.log(shiftPressed ? value.toUpperCase() : value.toLowerCase());
-                    }
-                });
-            });
-        }
-
-        function toggleShift() {
-            const keys = document.querySelectorAll('.key:not(.shift):not(.enter):not(.backspace):not(.space)');
-            keys.forEach(key => {
-                if (key.textContent.length === 1) {
-                    key.textContent = shiftPressed ? 
-                        key.textContent.toUpperCase() : 
-                        key.textContent.toLowerCase();
-                }
-            });
-        }
-
-        // Initialize everything when the page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            initializeVirtualKeyboard();
-        });
-
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             const mainContent = document.getElementById('main-content');
-            
+
             sidebar.classList.toggle('collapsed');
-            
+
             if (sidebar.classList.contains('collapsed')) {
                 mainContent.classList.remove('expanded-margin');
                 mainContent.classList.add('collapsed-margin');

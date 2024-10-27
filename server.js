@@ -1,4 +1,5 @@
-// At the top with your other requires
+// server.js
+
 const { spawn } = require('child_process');
 const express = require('express');
 const http = require('http');
@@ -15,12 +16,11 @@ const wsClients = new Set();
 // Add middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static('public'));
 
-// Set correct MIME types (move this up here too)
-app.use(express.static('public', {
-    setHeaders: (res, path) => {
-        if (path.endsWith('.js')) {
+// Serve static files from 'public' directory with correct MIME types
+app.use(express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.js')) {
             res.setHeader('Content-Type', 'application/javascript');
         }
     }
@@ -31,46 +31,19 @@ wss.on('connection', (ws) => {
     console.log('New WebSocket client connected');
     wsClients.add(ws);
     
-    // Initialize the intrusion detector with broadcast function
-    if (!global.intrusionDetector) {
-        const broadcastToClients = (message) => {
-            wsClients.forEach(client => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(message);
-                }
-            });
-        };
-        
-        // Create Python process with broadcast capability
-        const pythonProcess = spawn('python', ['intrusion_detection.py']);
-        global.intrusionDetector = pythonProcess;
-        
-        pythonProcess.stdout.on('data', (data) => {
-            try {
-                const message = data.toString().trim();
-                if (message.startsWith('{')) {
-                    broadcastToClients(message);
-                }
-            } catch (error) {
-                console.error('Error processing Python output:', error);
-            }
-        });
-    }
-
-    // Send initial data
+    // Optional: Send a welcome message or initial data
     ws.send(JSON.stringify({
-        type: 'stats_update',
-        stats: {
-            total_alerts: 0,
-            active_threats: 0,
-            blocked_ips: 0,
-            port_scans: 0
-        }
+        type: 'welcome',
+        message: 'Connected to Network Monitor WebSocket Server'
     }));
 
     ws.on('close', () => {
         wsClients.delete(ws);
-        console.log('Client disconnected');
+        console.log('WebSocket client disconnected');
+    });
+
+    ws.on('error', (error) => {
+        console.error('WebSocket error:', error);
     });
 });
 
@@ -82,18 +55,17 @@ const trafficData = {
         UDP: 0,
         ICMP: 0,
         Other: 0
-    },
-    topTalkers: new Map()
+    }
 };
 
 // Start Python network monitor
 const pythonMonitor = spawn('python', [
-    path.join(__dirname, 'network_monitor.py')
+    path.join(__dirname, 'network_monitor.py'), '--interface', 'Ethernet' // Adjust interface as needed
 ], {
     stdio: ['pipe', 'pipe', 'pipe']
 });
 
-// Handle Python script output
+// Handle Python script stdout
 pythonMonitor.stdout.on('data', (data) => {
     try {
         // Split the output into lines as Python might send multiple packets
@@ -101,12 +73,8 @@ pythonMonitor.stdout.on('data', (data) => {
         
         lines.forEach(line => {
             // Try to parse any JSON data in the output
-            if (line.includes('{') && line.includes('}')) {
-                const jsonStr = line.substring(
-                    line.indexOf('{'),
-                    line.lastIndexOf('}') + 1
-                );
-                const packetData = JSON.parse(jsonStr);
+            if (line.startsWith('{') && line.endsWith('}')) {
+                const packetData = JSON.parse(line);
                 
                 // Store packet data
                 trafficData.packets.push(packetData);
@@ -120,11 +88,12 @@ pythonMonitor.stdout.on('data', (data) => {
                 }
 
                 // Broadcast to all connected clients
-                wss.clients.forEach(client => {
+                wsClients.forEach(client => {
                     if (client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify(packetData));
                     }
                 });
+                console.log('Broadcasted packet data:', packetData);
             }
             // Log other output for debugging
             else if (line.trim()) {
@@ -136,55 +105,17 @@ pythonMonitor.stdout.on('data', (data) => {
     }
 });
 
-// Handle Python script errors
+// Handle Python script stderr
 pythonMonitor.stderr.on('data', (data) => {
-    console.error('Python error:', data.toString());
+    console.error('Python monitor error:', data.toString());
 });
 
 // Handle Python script exit
 pythonMonitor.on('close', (code) => {
     console.log(`Python monitor exited with code ${code}`);
+    // Optionally, you can restart the Python script or handle the exit gracefully
 });
 
-// WebSocket connection handling
-wss.on('connection', (ws) => {
-    console.log('New WebSocket client connected');
-    
-    // Send current statistics
-    ws.send(JSON.stringify({
-        type: 'stats',
-        data: {
-            protocols: trafficData.protocols,
-            recentPackets: trafficData.packets.slice(-50)
-        }
-    }));
-
-    // Handle client disconnection
-    ws.on('close', () => {
-        console.log('Client disconnected');
-    });
-});
-
-// Error handling for the Python process
-process.on('exit', () => {
-    pythonMonitor.kill();
-});
-
-process.on('SIGINT', () => {
-    pythonMonitor.kill();
-    process.exit();
-});
-
-// Set correct MIME types
-app.use(express.static('public', {
-    setHeaders: (res, path) => {
-        if (path.endsWith('.js')) {
-            res.setHeader('Content-Type', 'application/javascript');
-        }
-    }
-}));
-
-// API endpoint for scanning the network
 app.get('/api/scan-network', async (req, res) => {
     try {
         // Spawn Python script for network scanning
@@ -216,7 +147,7 @@ app.get('/api/scan-network', async (req, res) => {
     }
 });
 
-// API endpoint for renaming a device
+
 app.post('/api/device/name', (req, res) => {
     console.log('Received rename request:', req.body);
     const { mac, name } = req.body;
@@ -271,7 +202,7 @@ print("RESULT:" + json.dumps(result))
     });
 });
 
-// Add this to your server.js with your other endpoints
+
 app.get('/api/device/state/:mac', (req, res) => {
     const { mac } = req.params;
     console.log('Checking state for device:', mac);  // Debug log
@@ -336,7 +267,7 @@ except Exception as e:
     });
 });
 
-// In server.js, modify the scan-subnets endpoint
+
 app.get('/api/scan-subnets', async (req, res) => {
     console.log('Starting subnet scan...');
     
@@ -411,11 +342,10 @@ app.get('/api/scan-subnets', async (req, res) => {
         });
     });
 
-    // Send initial response to prevent timeout
     res.json({ status: 'scanning' });
 });
 
-// Add this endpoint to server.js
+
 app.get('/api/device/ip/:ip', (req, res) => {
     const { ip } = req.params;
     const pythonProcess = spawn('python', ['-c', `
@@ -462,7 +392,7 @@ except Exception as e:
     });
 });
 
-// Add these endpoints to your server.js
+
 app.get('/api/devices/history/:mac', (req, res) => {
     const { mac } = req.params;
     const pythonProcess = spawn('python', ['-c', `
@@ -485,7 +415,6 @@ app.post('/api/devices/trust/:mac', (req, res) => {
     // ... handle process output and send response
 });
 
-// Add these new API endpoints with your other routes
 app.get('/api/alerts', (req, res) => {
     const pythonProcess = spawn('python', ['-c', `
         from intrusion_detection import IntrusionDetector
@@ -572,17 +501,23 @@ process.on('exit', () => {
     }
 });
 
+
 process.on('SIGINT', () => {
+    console.log('Shutting down server...');
+    pythonMonitor.kill();
+    // Kill other Python scripts if any (e.g., intrusionDetector)
     if (global.intrusionDetector) {
         global.intrusionDetector.kill();
     }
-    process.exit();
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
 });
 
-
-
 // Start the server
-server.listen(8080, () => {
-    console.log('Server started on port 8080');
-    console.log('Network monitor starting...');
+const PORT = 8080;
+server.listen(PORT, () => {
+    console.log(`Server started on port ${PORT}`);
+    console.log('Network monitor is running...');
 });

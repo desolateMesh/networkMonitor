@@ -1,3 +1,5 @@
+# db.py
+
 import sqlite3
 from datetime import datetime
 import logging
@@ -268,10 +270,10 @@ class NetworkDB:
             c.execute('SELECT * FROM devices WHERE mac = ?', (mac,))
             device = c.fetchone()
             conn.close()
-            print(f"Device details for {mac}: {device}")  # Debug print
+            logging.debug(f"Device details for {mac}: {device}")  # Changed from print to logging
             return device
         except Exception as e:
-            print(f"Error getting device details: {str(e)}")
+            logging.error(f"Error getting device details: {str(e)}")
             return None
 
     def reset_database(self):
@@ -291,5 +293,30 @@ class NetworkDB:
                 return True
         except sqlite3.Error as e:
             logging.error(f"Error resetting database: {e}")
-            
             return False
+
+    def get_custom_name_by_ip(self, ip):
+        """Get the custom name of a device based on its current IP address."""
+        try:
+            with sqlite3.connect(self.db_name, timeout=30) as conn:
+                c = conn.cursor()
+                # Get the MAC address associated with the latest timestamp for this IP
+                c.execute('''
+                    SELECT mac FROM ip_history
+                    WHERE ip_address = ?
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                ''', (ip,))
+                result = c.fetchone()
+                if result:
+                    mac = result[0]
+                    # Get custom name from devices table
+                    c.execute('SELECT custom_name FROM devices WHERE mac = ?', (mac,))
+                    name_result = c.fetchone()
+                    if name_result and name_result[0]:
+                        return name_result[0]
+                # If no custom name found, return None
+                return None
+        except sqlite3.Error as e:
+            logging.error(f"Error getting custom name by IP {ip}: {e}")
+            return None

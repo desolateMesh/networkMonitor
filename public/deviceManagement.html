@@ -3,6 +3,7 @@
 <head>
     <title>Device Management - Network Monitor</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/trafficChart.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/lucide-icons@0.263.1/font/lucide-icons.min.css" rel="stylesheet">
     <style>
         * {
@@ -371,73 +372,18 @@
             <td class="last-seen"></td>
         </tr>
     </template>
-
+</body>
 <script>
     // State Management
     let devices = [];
-    let subnetDevices = new Map();
+    let subnetDevices = [];
     let selectedDevices = new Set();
     let selectedSubnetDevices = new Set();
-    let ws;
-
-    // Initialize WebSocket
-    function initializeWebSocket() {
-        ws = new WebSocket('ws://localhost:8765');
-        
-        ws.onopen = () => {
-            console.log('WebSocket connected');
-        };
-        
-        ws.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            if (message.type === 'subnet_scan') {
-                handleSubnetScanMessage(message.data);
-            }
-        };
-        
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
-        
-        ws.onclose = () => {
-            console.log('WebSocket disconnected');
-            setTimeout(initializeWebSocket, 5000);
-        };
-    }
-
-    function handleSubnetScanMessage(data) {
-        const tbody = document.getElementById('subnetTableBody');
-        
-        switch (data.type) {
-            case 'device_found':
-                subnetDevices.set(data.device.ip, data.device);
-                updateSubnetTable();
-                break;
-                
-            case 'progress':
-                const scanBtn = document.querySelector('.device-panel:nth-child(2) .scan-btn');
-                scanBtn.textContent = 'Scanning...';
-                if (!subnetDevices.size) {
-                    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center;">${data.message}</td></tr>`;
-                }
-                break;
-                
-            case 'error':
-                console.error('Subnet scan error:', data.message);
-                break;
-                
-            case 'scan_complete':
-                const scanButton = document.querySelector('.device-panel:nth-child(2) .scan-btn');
-                scanButton.disabled = false;
-                scanButton.textContent = 'Scan Subnets';
-                
-                if (!subnetDevices.size) {
-                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No subnet devices found</td></tr>';
-                }
-                break;
-        }
-    }
-
+    
+    // Templates
+    const deviceRowTemplate = document.getElementById('deviceRowTemplate');
+    const subnetDeviceRowTemplate = document.getElementById('subnetDeviceRowTemplate');
+    
     // Action Button Management
     function updateActionButtons(isSubnet = false) {
         const selectedSet = isSubnet ? selectedSubnetDevices : selectedDevices;
@@ -456,24 +402,24 @@
             btn.classList.toggle('active', count > 0);
         });
     }
-
+    
     // Device Selection Handlers
-    function toggleDevice(identifier, checked, isSubnet = false) {
+    function toggleDevice(mac, checked, isSubnet = false) {
         const selectedSet = isSubnet ? selectedSubnetDevices : selectedDevices;
         if (checked) {
-            selectedSet.add(identifier);
+            selectedSet.add(mac);
         } else {
-            selectedSet.delete(identifier);
+            selectedSet.delete(mac);
         }
         
-        const row = document.querySelector(`tr[data-${isSubnet ? 'ip' : 'mac'}="${identifier}"]`);
+        const row = document.querySelector(`tr[data-${isSubnet ? 'ip' : 'mac'}="${mac}"]`);
         if (row) {
             row.classList.toggle('selected', checked);
         }
         
         updateActionButtons(isSubnet);
     }
-
+    
     function toggleAllDevices(isSubnet = false) {
         const selectAllCheckbox = document.getElementById(isSubnet ? 'selectAllSubnet' : 'selectAll');
         const deviceCheckboxes = document.querySelectorAll(isSubnet ? 
@@ -487,17 +433,145 @@
             toggleDevice(identifier, selectAllCheckbox.checked, isSubnet);
         });
     }
-
-    // Network Scanning Functions
+    
+    // Batch Actions
+    async function batchAction(action) {
+        const devices = Array.from(selectedDevices);
+        if (devices.length === 0) return;
+    
+        try {
+            switch (action) {
+                case 'rename':
+                    const newName = prompt("Enter new name for selected devices:");
+                    if (newName) {
+                        await Promise.all(devices.map(mac => renameDevice(mac, newName)));
+                    }
+                    break;
+    
+                case 'trust':
+                    if (confirm(`Trust ${devices.length} selected devices?`)) {
+                        await Promise.all(devices.map(mac => trustDevice(mac)));
+                    }
+                    break;
+    
+                case 'block':
+                    if (confirm(`Block ${devices.length} selected devices?`)) {
+                        await Promise.all(devices.map(mac => blockDevice(mac)));
+                    }
+                    break;
+    
+                case 'monitor':
+                    const monitorWindow = window.open('/monitor.html', '_blank');
+                    monitorWindow.devices = devices;
+                    break;
+    
+                case 'check':
+                    const results = await Promise.all(devices.map(mac => checkDeviceState(mac)));
+                    console.log('Device states:', results);
+                    break;
+            }
+    
+            // Refresh device list after batch action
+            await scanNetwork();
+            
+            // Clear selections
+            selectedDevices.clear();
+            document.getElementById('selectAll').checked = false;
+            updateActionButtons();
+    
+        } catch (error) {
+            console.error(`Batch ${action} failed:`, error);
+            alert(`Failed to ${action} devices: ${error.message}`);
+        }
+    }
+    
+    async function batchSubnetAction(action) {
+        const devices = Array.from(selectedSubnetDevices);
+        if (devices.length === 0) return;
+    
+        try {
+            switch (action) {
+                case 'monitor':
+                    const monitorWindow = window.open('/subnetMonitor.html', '_blank');
+                    monitorWindow.devices = devices;
+                    break;
+    
+                case 'check':
+                    const results = await Promise.all(devices.map(ip => getSubnetDeviceDetails(ip)));
+                    console.log('Subnet device details:', results);
+                    break;
+            }
+    
+            // Clear selections
+            selectedSubnetDevices.clear();
+            document.getElementById('selectAllSubnet').checked = false;
+            updateActionButtons(true);
+    
+        } catch (error) {
+            console.error(`Batch subnet ${action} failed:`, error);
+            alert(`Failed to ${action} subnet devices: ${error.message}`);
+        }
+    }
+    
+    // Device Actions
+    async function renameDevice(mac, newName) {
+        const response = await fetch('/api/device/name', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mac, name: newName })
+        });
+    
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to rename device');
+        }
+    
+        return response.json();
+    }
+    
+    async function trustDevice(mac) {
+        const response = await fetch('/api/devices/trust/' + mac, {
+            method: 'POST'
+        });
+    
+        if (!response.ok) {
+            throw new Error('Failed to trust device');
+        }
+    
+        return response.json();
+    }
+    
+    async function blockDevice(mac) {
+        const response = await fetch('/api/devices/block/' + mac, {
+            method: 'POST'
+        });
+    
+        if (!response.ok) {
+            throw new Error('Failed to block device');
+        }
+    
+        return response.json();
+    }
+    
+    async function checkDeviceState(mac) {
+        const response = await fetch(`/api/device/state/${mac}`);
+        if (!response.ok) {
+            throw new Error('Failed to check device state');
+        }
+        return response.json();
+    }
+    
+    // Network Scanning
     async function scanNetwork() {
         const scanBtn = document.querySelector('.device-panel:first-child .scan-btn');
         const tbody = document.getElementById('deviceTableBody');
         
         try {
+            // Show loading state
             scanBtn.disabled = true;
             scanBtn.textContent = 'Scanning...';
             tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Scanning network...</td></tr>';
-
+    
             const response = await fetch('/api/scan-network');
             if (!response.ok) throw new Error('Network scan failed');
             
@@ -507,9 +581,9 @@
                 <tr data-mac="${device.mac}">
                     <td class="checkbox-cell">
                         <input type="checkbox" 
-                            class="device-checkbox" 
-                            value="${device.mac}"
-                            onchange="toggleDevice('${device.mac}', this.checked)">
+                               class="device-checkbox" 
+                               value="${device.mac}"
+                               onchange="toggleDevice('${device.mac}', this.checked)">
                     </td>
                     <td>
                         <span class="status-indicator ${device.online ? 'status-online' : 'status-offline'}"></span>
@@ -528,7 +602,7 @@
                     <td>First seen: ${device.firstSeen}<br>Last seen: ${device.lastSeen}</td>
                 </tr>
             `).join('');
-
+    
         } catch (error) {
             console.error('Network scan error:', error);
             tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #f44336;">Error scanning network. Please try again.</td></tr>';
@@ -540,197 +614,72 @@
             updateActionButtons();
         }
     }
-
+    
     async function scanSubnets() {
         const scanBtn = document.querySelector('.device-panel:nth-child(2) .scan-btn');
+        const tbody = document.getElementById('subnetTableBody');
         
         try {
             scanBtn.disabled = true;
             scanBtn.textContent = 'Scanning...';
-            
-            // Clear existing devices
-            subnetDevices.clear();
-            updateSubnetTable();
-            
-            // Trigger the scan
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Scanning subnets...</td></tr>';
+    
             const response = await fetch('/api/scan-subnets');
-            if (!response.ok) {
-                throw new Error('Failed to initiate subnet scan');
+            if (!response.ok) throw new Error('Subnet scan failed');
+            
+            const data = await response.json();
+            subnetDevices = [];
+            
+            let tableContent = '';
+            for (const subnet in data.subnets) {
+                const subnetData = data.subnets[subnet];
+                subnetDevices.push(...subnetData.devices);
+                
+                subnetData.devices.forEach(device => {
+                    tableContent += `
+                        <tr data-ip="${device.ip}">
+                            <td class="checkbox-cell">
+                                <input type="checkbox" 
+                                       class="subnet-device-checkbox" 
+                                       value="${device.ip}"
+                                       onchange="toggleDevice('${device.ip}', this.checked, true)">
+                            </td>
+                            <td>${subnet}</td>
+                            <td>${device.ip}</td>
+                            <td>${device.mac || 'N/A'}</td>
+                            <td>${device.hostname || 'Unknown'}</td>
+                            <td>${device.is_gateway ? 'Yes' : 'No'}</td>
+                            <td>${device.last_seen || 'Unknown'}</td>
+                        </tr>
+                    `;
+                });
             }
             
+            tbody.innerHTML = tableContent || '<tr><td colspan="7" style="text-align: center;">No subnet devices found</td></tr>';
+    
         } catch (error) {
             console.error('Subnet scan error:', error);
-            const tbody = document.getElementById('subnetTableBody');
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #f44336;">
-                Error scanning subnets: ${error.message}</td></tr>`;
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #f44336;">Error scanning subnets. Please try again.</td></tr>';
+        } finally {
             scanBtn.disabled = false;
             scanBtn.textContent = 'Scan Subnets';
-        }
-    }
-
-    function updateSubnetTable() {
-        const tbody = document.getElementById('subnetTableBody');
-        
-        if (subnetDevices.size === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No subnet devices found</td></tr>';
-            return;
-        }
-        
-        const tableContent = Array.from(subnetDevices.values()).map(device => `
-            <tr data-ip="${device.ip}">
-                <td class="checkbox-cell">
-                    <input type="checkbox" 
-                        class="subnet-device-checkbox" 
-                        value="${device.ip}"
-                        onchange="toggleDevice('${device.ip}', this.checked, true)">
-                </td>
-                <td>${device.subnet || 'Unknown'}</td>
-                <td>${device.ip}</td>
-                <td>${device.mac || 'N/A'}</td>
-                <td>${device.hostname || 'Unknown'}</td>
-                <td>${device.type === 'network_device' ? 'Yes' : 'No'}</td>
-                <td>${formatLastSeen(device.last_seen)}</td>
-            </tr>
-        `).join('');
-        
-        tbody.innerHTML = tableContent;
-        updateActionButtons(true);
-    }
-
-    // Batch Actions
-    async function batchAction(action) {
-        const devices = Array.from(selectedDevices);
-        if (devices.length === 0) return;
-
-        try {
-            switch (action) {
-                case 'rename':
-                    const newName = prompt("Enter new name for selected devices:");
-                    if (newName) {
-                        await Promise.all(devices.map(mac => renameDevice(mac, newName)));
-                    }
-                    break;
-
-                case 'trust':
-                    if (confirm(`Trust ${devices.length} selected devices?`)) {
-                        await Promise.all(devices.map(mac => trustDevice(mac)));
-                    }
-                    break;
-
-                case 'block':
-                    if (confirm(`Block ${devices.length} selected devices?`)) {
-                        await Promise.all(devices.map(mac => blockDevice(mac)));
-                    }
-                    break;
-
-                case 'monitor':
-                    window.open('/monitor.html?devices=' + devices.join(','), '_blank');
-                    break;
-
-                case 'check':
-                    const results = await Promise.all(devices.map(mac => checkDeviceState(mac)));
-                    console.log('Device states:', results);
-                    break;
-            }
-
-            await scanNetwork();
-            selectedDevices.clear();
-            updateActionButtons();
-
-        } catch (error) {
-            console.error(`Batch ${action} failed:`, error);
-            alert(`Failed to ${action} devices: ${error.message}`);
-        }
-    }
-
-    async function batchSubnetAction(action) {
-        const devices = Array.from(selectedSubnetDevices);
-        if (devices.length === 0) return;
-
-        try {
-            switch (action) {
-                case 'monitor':
-                    window.open('/subnetMonitor.html?devices=' + devices.join(','), '_blank');
-                    break;
-
-                case 'check':
-                    const results = await Promise.all(devices.map(ip => getSubnetDeviceDetails(ip)));
-                    console.log('Subnet device details:', results);
-                    break;
-            }
-
+            document.getElementById('selectAllSubnet').checked = false;
             selectedSubnetDevices.clear();
             updateActionButtons(true);
-
-        } catch (error) {
-            console.error(`Batch subnet ${action} failed:`, error);
-            alert(`Failed to ${action} subnet devices: ${error.message}`);
         }
     }
-
-    // Device Actions
-    async function renameDevice(mac, newName) {
-        const response = await fetch('/api/device/name', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mac, name: newName })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || 'Failed to rename device');
-        }
-
-        return response.json();
-    }
-
-    async function trustDevice(mac) {
-        const response = await fetch('/api/devices/trust/' + mac, {
-            method: 'POST'
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to trust device');
-        }
-
-        return response.json();
-    }
-
-    async function blockDevice(mac) {
-        const response = await fetch('/api/devices/block/' + mac, {
-            method: 'POST'
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to block device');
-        }
-
-        return response.json();
-    }
-
-    async function checkDeviceState(mac) {
-        const response = await fetch(`/api/device/state/${mac}`);
-        if (!response.ok) {
-            throw new Error('Failed to check device state');
-        }
-        return response.json();
-    }
-
+    
     // Utility Functions
-    function formatLastSeen(timestamp) {
-        if (!timestamp) return 'Unknown';
-        try {
-            const date = new Date(timestamp);
-            return date.toLocaleString();
-        } catch (e) {
-            return timestamp;
-        }
+    function formatDate(dateString) {
+        if (!dateString) return 'Unknown';
+        const date = new Date(dateString);
+        return date.toLocaleString();
     }
-
+    
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
-        initializeWebSocket();
         scanNetwork();
+        scanSubnets();
     });
     </script>
 </body>

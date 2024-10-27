@@ -1,5 +1,6 @@
-// WebSocket connection
-const ws = new WebSocket('ws://localhost:8765');
+// public/trafficChart.js
+
+const ws = new WebSocket('ws://localhost:8080'); // Connect to Node.js WebSocket server
 
 // Traffic data storage
 let trafficData = {
@@ -11,51 +12,9 @@ let trafficData = {
         Other: 0
     },
     bandwidthData: [],
-    topTalkers: new Map()
 };
 
-// Device cache for names
-let deviceCache = new Map();
-
-// Initialize visualizations
-function initializeVisualizations() {
-    const trafficInfo = document.getElementById('trafficInfo');
-    
-    // Clear existing content
-    trafficInfo.innerHTML = '';
-    
-    // Create protocol distribution chart
-    const protocolCanvas = document.createElement('canvas');
-    protocolCanvas.id = 'protocolChart';
-    trafficInfo.appendChild(protocolCanvas);
-
-    // Create bandwidth usage chart
-    const bandwidthCanvas = document.createElement('canvas');
-    bandwidthCanvas.id = 'bandwidthChart';
-    trafficInfo.appendChild(bandwidthCanvas);
-
-    // Create packet details table
-    const tableDiv = document.createElement('div');
-    tableDiv.innerHTML = `
-        <table id="packetTable">
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>Source</th>
-                    <th>Destination</th>
-                    <th>Protocol</th>
-                    <th>Length</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
-    `;
-    trafficInfo.appendChild(tableDiv);
-
-    initializeCharts();
-}
-
-// Initialize Chart.js charts
+// Initialize charts
 function initializeCharts() {
     const protocolCtx = document.getElementById('protocolChart').getContext('2d');
     window.protocolChart = new Chart(protocolCtx, {
@@ -69,9 +28,12 @@ function initializeCharts() {
         },
         options: {
             responsive: true,
-            title: {
-                display: true,
-                text: 'Protocol Distribution'
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Protocol Distribution'
+                }
             }
         }
     });
@@ -82,150 +44,129 @@ function initializeCharts() {
         data: {
             labels: [],
             datasets: [{
-                label: 'Bandwidth Usage (bytes)',
+                label: 'Bandwidth Usage (bytes/s)',
                 data: [],
                 borderColor: '#36A2EB',
                 fill: false
             }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: 'Time'
+                    }
+                },
+                y: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: 'Bytes'
+                    }
+                }
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Bandwidth Usage Over Time'
+                }
+            }
         }
     });
 }
 
-// Helper function to get device name
-function getDeviceName(mac, defaultName) {
-    if (!mac) return defaultName;
-    
-    const deviceInfo = deviceCache.get(mac);
-    if (deviceInfo) {
-        return deviceInfo.custom_name || deviceInfo.hostname || defaultName;
-    }
-    
-    // If we don't have the device info yet, trigger a fetch
-    if (!deviceCache.has(mac)) {
-        fetch(`/api/device/state/${mac}`)
-            .then(response => response.json())
-            .then(deviceInfo => {
-                if (deviceInfo && !deviceInfo.error) {
-                    deviceCache.set(mac, deviceInfo);
-                    // Trigger a re-render of the table
-                    updateVisualizations();
-                }
-            })
-            .catch(error => console.error('Error fetching device info:', error));
-    }
-    
-    return defaultName;
-}
-
-// Update top talkers data
-function updateTopTalkers(ip, hostname) {
-    const currentData = trafficData.topTalkers.get(ip) || { count: 0, hostname: hostname };
-    currentData.count++;
-    trafficData.topTalkers.set(ip, currentData);
-}
-
-// Update data structures with new packet information
-function updateData(packet) {
-    // Update protocol counts
-    trafficData.protocols[packet.protocol] = (trafficData.protocols[packet.protocol] || 0) + 1;
-    
-    // Update bandwidth data
-    trafficData.bandwidthData.push({
-        time: packet.timestamp,
-        bytes: packet.length
-    });
-    if (trafficData.bandwidthData.length > 50) {
-        trafficData.bandwidthData.shift();
-    }
-    
-    // Update device info and top talkers
-    if (packet.src_mac && !deviceCache.has(packet.src_mac)) {
-        const srcName = getDeviceName(packet.src_mac, packet.src_host || packet.src_ip);
-        updateTopTalkers(packet.src_ip, srcName);
-    }
-    
-    // Add to recent packets
-    trafficData.packets.unshift(packet);
-    if (trafficData.packets.length > 10) {
-        trafficData.packets.pop();
-    }
-}
-
-// Update visualizations with new data
-function updateVisualizations() {
+// Update charts and table with new packet data
+function updateVisualizations(packet) {
     // Update protocol chart
-    if (window.protocolChart) {
-        protocolChart.data.datasets[0].data = [
-            trafficData.protocols.TCP || 0,
-            trafficData.protocols.UDP || 0,
-            trafficData.protocols.ICMP || 0,
-            trafficData.protocols.Other || 0
+    if (packet.protocol && window.protocolChart) {
+        trafficData.protocols[packet.protocol] = (trafficData.protocols[packet.protocol] || 0) + 1;
+        window.protocolChart.data.datasets[0].data = [
+            trafficData.protocols.TCP,
+            trafficData.protocols.UDP,
+            trafficData.protocols.ICMP,
+            trafficData.protocols.Other
         ];
-        protocolChart.update();
+        window.protocolChart.update();
     }
 
     // Update bandwidth chart
     if (window.bandwidthChart) {
-        bandwidthChart.data.labels = trafficData.bandwidthData.map(d => d.time);
-        bandwidthChart.data.datasets[0].data = trafficData.bandwidthData.map(d => d.bytes);
-        bandwidthChart.update();
+        const timestamp = packet.timestamp;
+        trafficData.bandwidthData.push({
+            time: timestamp,
+            bytes: packet.length
+        });
+
+        // Keep last 50 data points
+        if (trafficData.bandwidthData.length > 50) {
+            trafficData.bandwidthData.shift();
+        }
+
+        window.bandwidthChart.data.labels = trafficData.bandwidthData.map(d => d.time);
+        window.bandwidthChart.data.datasets[0].data = trafficData.bandwidthData.map(d => d.bytes);
+        window.bandwidthChart.update();
     }
 
     // Update packet table
+    updatePacketTable(packet);
+}
+
+// Update packet table with new data
+function updatePacketTable(packet) {
     const tbody = document.querySelector('#packetTable tbody');
-    if (tbody) {
-        tbody.innerHTML = trafficData.packets.map(packet => {
-            const srcName = getDeviceName(packet.src_mac, packet.src_host || packet.src_ip);
-            const dstName = getDeviceName(packet.dst_mac, packet.dst_host || packet.dst_ip);
-            
-            return `
-                <tr>
-                    <td>${packet.timestamp}</td>
-                    <td>${srcName}</td>
-                    <td>${dstName}</td>
-                    <td>${packet.protocol}</td>
-                    <td>${packet.length} bytes</td>
-                </tr>
-            `;
-        }).join('');
+    if (!tbody) return;
+
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td>${packet.timestamp}</td>
+        <td>${packet.src_host || packet.src_ip}</td>
+        <td>${packet.dst_host || packet.dst_ip}</td>
+        <td>${packet.protocol}</td>
+        <td>${packet.length} bytes</td>
+    `;
+
+    // Add new row at the beginning
+    tbody.insertBefore(row, tbody.firstChild);
+
+    // Keep only last 100 rows
+    while (tbody.children.length > 100) {
+        tbody.removeChild(tbody.lastChild);
     }
 }
 
-// WebSocket message handler
-ws.onmessage = (event) => {
-    const packet = JSON.parse(event.data);
-    console.log('Received packet:', packet);  // Debug log
-    
-    // If we have a MAC address but no device info, fetch it
-    if (packet.src_mac && !deviceCache.has(packet.src_mac)) {
-        fetch(`/api/device/state/${packet.src_mac}`)
-            .then(response => response.json())
-            .then(deviceInfo => {
-                if (deviceInfo && !deviceInfo.error) {
-                    deviceCache.set(packet.src_mac, deviceInfo);
-                    // Trigger a re-render of the table
-                    updateVisualizations();
-                }
-            })
-            .catch(error => console.error('Error fetching device info:', error));
-    }
-
-    updateData(packet);
-    updateVisualizations();
+// WebSocket event handlers
+ws.onopen = () => {
+    console.log('WebSocket connection established');
+    initializeCharts();
 };
 
-// WebSocket error handling
+ws.onmessage = (event) => {
+    try {
+        const packet = JSON.parse(event.data);
+        console.log('Received packet:', packet);
+        updateVisualizations(packet);
+    } catch (error) {
+        console.error('Error processing packet:', error);
+    }
+};
+
 ws.onerror = (error) => {
     console.error('WebSocket error:', error);
 };
 
 ws.onclose = () => {
     console.log('WebSocket connection closed');
-};
-
-ws.onopen = () => {
-    console.log('WebSocket connection established');
+    // Attempt to reconnect after 5 seconds
+    setTimeout(() => {
+        window.location.reload();
+    }, 5000);
 };
 
 // Initialize when page loads
-document.addEventListener('DOMContentLoaded', initializeVisualizations);
+document.addEventListener('DOMContentLoaded', () => {
+    // Charts are initialized on WebSocket open
+});
