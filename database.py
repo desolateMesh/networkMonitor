@@ -291,4 +291,5 @@ class NetworkDB:
                 return True
         except sqlite3.Error as e:
             logging.error(f"Error resetting database: {e}")
+            
             return False
