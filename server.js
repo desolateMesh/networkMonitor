@@ -58,9 +58,9 @@ const trafficData = {
     }
 };
 
-// Start Python network monitor
+// Start Python network monitor without specifying interface
 const pythonMonitor = spawn('python', [
-    path.join(__dirname, 'network_monitor.py'), '--interface', 'Ethernet' // Adjust interface as needed
+    path.join(__dirname, 'network_monitor.py')  // Remove the --interface parameter
 ], {
     stdio: ['pipe', 'pipe', 'pipe']
 });
@@ -76,17 +76,6 @@ pythonMonitor.stdout.on('data', (data) => {
             if (line.startsWith('{') && line.endsWith('}')) {
                 const packetData = JSON.parse(line);
                 
-                // Store packet data
-                trafficData.packets.push(packetData);
-                if (trafficData.packets.length > 1000) {
-                    trafficData.packets.shift();
-                }
-
-                // Update protocol stats
-                if (packetData.protocol) {
-                    trafficData.protocols[packetData.protocol]++;
-                }
-
                 // Broadcast to all connected clients
                 wsClients.forEach(client => {
                     if (client.readyState === WebSocket.OPEN) {
